@@ -352,7 +352,7 @@ STATIC_UNIT_TESTED void crsfDataReceive(uint16_t c, void *data)
 #if defined(USE_CRSF_V3)
     static uint8_t crsfFrameErrorCnt = 0;
 #endif
-    const timeUs_t currentTimeUs = microsISR();
+    const timeUs_t currentTimeUs = micros64_real();
 
 #ifdef DEBUG_CRSF_PACKETS
     debug[2] = currentTimeUs - crsfFrameStartAtUs;
