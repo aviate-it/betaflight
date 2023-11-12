@@ -40,6 +40,8 @@ void sbufFill(sbuf_t *dst, uint8_t data, int len);
 void sbufWriteData(sbuf_t *dst, const void *data, int len);
 void sbufWriteString(sbuf_t *dst, const char *string);
 void sbufWriteStringWithZeroTerminator(sbuf_t *dst, const char *string);
+void sbufWriteFloat(sbuf_t *dst, float val);
+void sbufWrite32(sbuf_t *dst, int32_t val);
 
 uint8_t sbufReadU8(sbuf_t *src);
 uint16_t sbufReadU16(sbuf_t *src);

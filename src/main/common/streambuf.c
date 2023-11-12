@@ -88,6 +88,27 @@ void sbufWriteStringWithZeroTerminator(sbuf_t *dst, const char *string)
     sbufWriteData(dst, string, strlen(string) + 1);
 }
 
+void sbufWriteFloat(sbuf_t *dst, float val) {
+    union {
+        float f;
+        uint32_t u;
+    } floatToUint;
+
+    floatToUint.f = val;
+
+    sbufWriteU8(dst, (floatToUint.u >> 0));
+    sbufWriteU8(dst, (floatToUint.u >> 8));
+    sbufWriteU8(dst, (floatToUint.u >> 16));
+    sbufWriteU8(dst, (floatToUint.u >> 24));
+}
+
+void sbufWrite32(sbuf_t *dst, int32_t val) {
+    sbufWriteU8(dst, val >> 0);
+    sbufWriteU8(dst, val >> 8);
+    sbufWriteU8(dst, val >> 16);
+    sbufWriteU8(dst, val >> 24);
+}
+
 uint8_t sbufReadU8(sbuf_t *src)
 {
     return *src->ptr++;

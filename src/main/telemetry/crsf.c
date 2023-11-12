@@ -61,7 +61,11 @@
 #include "rx/crsf.h"
 #include "rx/crsf_protocol.h"
 
+#include "sensors/acceleration.h"
+#include "sensors/barometer.h"
 #include "sensors/battery.h"
+#include "sensors/compass.h"
+#include "sensors/gyro.h"
 #include "sensors/sensors.h"
 
 #include "telemetry/telemetry.h"
@@ -234,12 +238,12 @@ void crsfFrameGps(sbuf_t *dst)
     // use sbufWrite since CRC does not include frame length
     sbufWriteU8(dst, CRSF_FRAME_GPS_PAYLOAD_SIZE + CRSF_FRAME_LENGTH_TYPE_CRC);
     sbufWriteU8(dst, CRSF_FRAMETYPE_GPS);
-    sbufWriteU32BigEndian(dst, gpsSol.llh.lat); // CRSF and betaflight use same units for degrees
-    sbufWriteU32BigEndian(dst, gpsSol.llh.lon);
-    sbufWriteU16BigEndian(dst, (gpsSol.groundSpeed * 36 + 50) / 100); // gpsSol.groundSpeed is in cm/s
-    sbufWriteU16BigEndian(dst, gpsSol.groundCourse * 10); // gpsSol.groundCourse is degrees * 10
+    sbufWriteU32(dst, gpsSol.llh.lat); // CRSF and betaflight use same units for degrees
+    sbufWriteU32(dst, gpsSol.llh.lon);
+    sbufWriteU16(dst, (gpsSol.groundSpeed * 36 + 50) / 100); // gpsSol.groundSpeed is in cm/s
+    sbufWriteU16(dst, gpsSol.groundCourse * 10); // gpsSol.groundCourse is degrees * 10
     const uint16_t altitude = (constrain(getEstimatedAltitudeCm(), 0 * 100, 5000 * 100) / 100) + 1000; // constrain altitude from 0 to 5,000m
-    sbufWriteU16BigEndian(dst, altitude);
+    sbufWriteU16(dst, altitude);
     sbufWriteU8(dst, gpsSol.numSat);
 }
 
@@ -257,11 +261,16 @@ void crsfFrameBatterySensor(sbuf_t *dst)
     sbufWriteU8(dst, CRSF_FRAME_BATTERY_SENSOR_PAYLOAD_SIZE + CRSF_FRAME_LENGTH_TYPE_CRC);
     sbufWriteU8(dst, CRSF_FRAMETYPE_BATTERY_SENSOR);
     if (telemetryConfig()->report_cell_voltage) {
-        sbufWriteU16BigEndian(dst, (getBatteryAverageCellVoltage() + 5) / 10); // vbat is in units of 0.01V
+        sbufWriteU16(dst, (getBatteryAverageCellVoltage() + 5) / 10); // vbat is in units of 0.01V
     } else {
-        sbufWriteU16BigEndian(dst, getLegacyBatteryVoltage());
+        sbufWriteU16(dst, getLegacyBatteryVoltage());
     }
-    sbufWriteU16BigEndian(dst, getAmperage() / 10);
+
+    // voltageMeter_t meter;
+    // voltageMeterRead(VOLTAGE_METER_ID_BATTERY_1, &meter);
+    // sbufWriteU16(dst, (uint8_t)constrain((meter.displayFiltered + 5) / 10, 0, 255));
+
+    sbufWriteU16(dst, getAmperage() / 10);
     const uint32_t mAhDrawn = getMAhDrawn();
     const uint8_t batteryRemainingPercentage = calculateBatteryPercentageRemaining();
     sbufWriteU8(dst, (mAhDrawn >> 16));
@@ -314,25 +323,25 @@ int16_t     Yaw angle ( rad / 10000 )
 */
 
 // convert andgle in decidegree to radians/10000 with reducing angle to +/-180 degree range
-static int16_t decidegrees2Radians10000(int16_t angle_decidegree)
-{
-    while (angle_decidegree > 1800) {
-        angle_decidegree -= 3600;
-    }
-    while (angle_decidegree < -1800) {
-        angle_decidegree += 3600;
-    }
-    return (int16_t)(RAD * 1000.0f * angle_decidegree);
-}
+// static int16_t decidegrees2Radians10000(int16_t angle_decidegree)
+// {
+//     while (angle_decidegree > 1800) {
+//         angle_decidegree -= 3600;
+//     }
+//     while (angle_decidegree < -1800) {
+//         angle_decidegree += 3600;
+//     }
+//     return (int16_t)(RAD * 1000.0f * angle_decidegree);
+// }
 
 // fill dst buffer with crsf-attitude telemetry frame
 void crsfFrameAttitude(sbuf_t *dst)
 {
      sbufWriteU8(dst, CRSF_FRAME_ATTITUDE_PAYLOAD_SIZE + CRSF_FRAME_LENGTH_TYPE_CRC);
      sbufWriteU8(dst, CRSF_FRAMETYPE_ATTITUDE);
-     sbufWriteU16BigEndian(dst, decidegrees2Radians10000(attitude.values.pitch));
-     sbufWriteU16BigEndian(dst, decidegrees2Radians10000(attitude.values.roll));
-     sbufWriteU16BigEndian(dst, decidegrees2Radians10000(attitude.values.yaw));
+     sbufWriteU16(dst, (attitude.values.pitch));
+     sbufWriteU16(dst, (attitude.values.roll));
+     sbufWriteU16(dst, (attitude.values.yaw));
 }
 
 /*
@@ -383,6 +392,126 @@ void crsfFrameFlightMode(sbuf_t *dst)
     sbufWriteU8(dst, '\0');     // zero-terminate string
     // write in the frame length
     *lengthPtr = sbufPtr(dst) - lengthPtr;
+}
+
+/*
+0xA0 Accelerator
+Payload:
+float x
+float y
+float z
+*/
+void crsfFrameAccelerator(sbuf_t *dst)
+{
+    sbufWriteU8(dst, CRSF_FRAME_ACCELERATOR_PAYLOAD_SIZE + CRSF_FRAME_LENGTH_TYPE_CRC);
+    sbufWriteU8(dst, CRSF_FRAMETYPE_ACCELERATOR);
+    sbufWriteFloat(dst, acc.accADC[0]);
+    sbufWriteFloat(dst, acc.accADC[1]);
+    sbufWriteFloat(dst, acc.accADC[2]);
+}
+
+/*
+0xA1 Baro
+Payload:
+float altitude
+int32_t temperature
+int32_t pressure
+*/
+void crsfFrameBaro(sbuf_t *dst)
+{
+    sbufWriteU8(dst, CRSF_FRAME_BARO_PAYLOAD_SIZE + CRSF_FRAME_LENGTH_TYPE_CRC);
+    sbufWriteU8(dst, CRSF_FRAMETYPE_BARO);
+    sbufWriteFloat(dst, baro.altitude);
+    sbufWriteU32(dst, baro.temperature);
+    sbufWriteU32(dst, baro.pressure);
+}
+
+/*
+0xA2 Gyro
+Payload:
+float x
+float y
+float z
+*/
+void crsfFrameGyro(sbuf_t *dst)
+{
+    sbufWriteU8(dst, CRSF_FRAME_GYRO_PAYLOAD_SIZE + CRSF_FRAME_LENGTH_TYPE_CRC);
+    sbufWriteU8(dst, CRSF_FRAMETYPE_GYRO);
+    sbufWriteFloat(dst, gyro.gyroADC[0]);
+    sbufWriteFloat(dst, gyro.gyroADC[1]);
+    sbufWriteFloat(dst, gyro.gyroADC[2]);
+    sbufWriteFloat(dst, gyro.gyroADCf[0]);
+    sbufWriteFloat(dst, gyro.gyroADCf[1]);
+    sbufWriteFloat(dst, gyro.gyroADCf[2]);
+}
+
+/*
+0xA3 Magnet
+Payload:
+float x
+float y
+float z
+*/
+void crsfFrameMagnet(sbuf_t *dst)
+{
+    sbufWriteU8(dst, CRSF_FRAME_MAGNET_PAYLOAD_SIZE + CRSF_FRAME_LENGTH_TYPE_CRC);
+    sbufWriteU8(dst, CRSF_FRAMETYPE_MAGNET);
+    sbufWriteFloat(dst, mag.magADC[0]);
+    sbufWriteFloat(dst, mag.magADC[1]);
+    sbufWriteFloat(dst, mag.magADC[2]);
+}
+
+
+/*
+0xA4 Quaternion
+Payload:
+float w
+float x
+float y
+float z
+*/
+void crsfFrameQuaternion(sbuf_t *dst)
+{
+    quaternion __q;
+    getQuaternion(& __q);
+    sbufWriteU8(dst, CRSF_FRAME_QUATERNION_PAYLOAD_SIZE + CRSF_FRAME_LENGTH_TYPE_CRC);
+    sbufWriteU8(dst, CRSF_FRAMETYPE_QUATERNION);
+    sbufWriteFloat(dst, (__q.w));
+    sbufWriteFloat(dst, (__q.x));
+    sbufWriteFloat(dst, (__q.y));
+    sbufWriteFloat(dst, (__q.z));
+}
+
+/*
+0xA5 IMU
+Payload:
+float w
+float x
+float y
+float z
+float x
+float y
+float z
+float x
+float y
+float z
+*/
+void crsfFrameIMU(sbuf_t *dst)
+{
+    quaternion __q;
+    getQuaternion(& __q);
+    sbufWriteU8(dst, CRSF_FRAME_IMU_PAYLOAD_SIZE + CRSF_FRAME_LENGTH_TYPE_CRC);
+    sbufWriteU8(dst, CRSF_FRAMETYPE_IMU);
+    sbufWriteFloat(dst, (__q.w));
+    sbufWriteFloat(dst, (__q.x));
+    sbufWriteFloat(dst, (__q.y));
+    sbufWriteFloat(dst, (__q.z));
+    sbufWriteFloat(dst, gyro.gyroADCf[0]);
+    sbufWriteFloat(dst, gyro.gyroADCf[1]);
+    sbufWriteFloat(dst, gyro.gyroADCf[2]);
+    sbufWriteFloat(dst, acc.accADC[0]);
+    sbufWriteFloat(dst, acc.accADC[1]);
+    sbufWriteFloat(dst, acc.accADC[2]);
 }
 
 /*
@@ -578,11 +707,17 @@ static void crsfFrameDisplayPortClear(sbuf_t *dst)
 // schedule array to decide how often each type of frame is sent
 typedef enum {
     CRSF_FRAME_START_INDEX = 0,
-    CRSF_FRAME_ATTITUDE_INDEX = CRSF_FRAME_START_INDEX,
+    CRSF_FRAME_ACCELERATOR_INDEX = CRSF_FRAME_START_INDEX,
+    CRSF_FRAME_ATTITUDE_INDEX,
+    CRSF_FRAME_BARO_INDEX,
     CRSF_FRAME_BATTERY_SENSOR_INDEX,
     CRSF_FRAME_FLIGHT_MODE_INDEX,
     CRSF_FRAME_GPS_INDEX,
+    CRSF_FRAME_GYRO_INDEX,
     CRSF_FRAME_HEARTBEAT_INDEX,
+    CRSF_FRAME_IMU_INDEX,
+    CRSF_FRAME_MAGNET_INDEX,
+    CRSF_FRAME_QUATERNION_INDEX,
     CRSF_SCHEDULE_COUNT_MAX
 } crsfFrameTypeIndex_e;
 
@@ -624,44 +759,81 @@ static void processCrsf(void)
 
     static uint8_t crsfScheduleIndex = 0;
 
-    const uint8_t currentSchedule = crsfSchedule[crsfScheduleIndex];
+    // const uint8_t currentSchedule = crsfSchedule[crsfScheduleIndex];
 
     sbuf_t crsfPayloadBuf;
-    sbuf_t *dst = &crsfPayloadBuf;
+    // sbuf_t *dst = &crsfPayloadBuf;
 
-    if (currentSchedule & BIT(CRSF_FRAME_ATTITUDE_INDEX)) {
-        crsfInitializeFrame(dst);
-        crsfFrameAttitude(dst);
-        crsfFinalize(dst);
-    }
-    if (currentSchedule & BIT(CRSF_FRAME_BATTERY_SENSOR_INDEX)) {
-        crsfInitializeFrame(dst);
-        crsfFrameBatterySensor(dst);
-        crsfFinalize(dst);
-    }
-
-    if (currentSchedule & BIT(CRSF_FRAME_FLIGHT_MODE_INDEX)) {
-        crsfInitializeFrame(dst);
-        crsfFrameFlightMode(dst);
-        crsfFinalize(dst);
-    }
+    switch(crsfSchedule[crsfScheduleIndex]) {
+#ifdef USE_ACC
+        case CRSF_FRAME_ACCELERATOR_INDEX:
+            crsfInitializeFrame(&crsfPayloadBuf);
+            crsfFrameAccelerator(&crsfPayloadBuf);
+            crsfFinalize(&crsfPayloadBuf);
+            break;
+#endif
+        // case CRSF_FRAME_ATTITUDE_INDEX:
+        //     crsfInitializeFrame(&crsfPayloadBuf);
+        //     crsfFrameAttitude(&crsfPayloadBuf);
+        //     crsfFinalize(&crsfPayloadBuf);
+        //     break;
+#ifdef USE_BARO
+        case CRSF_FRAME_BARO_INDEX:
+            crsfInitializeFrame(&crsfPayloadBuf);
+            crsfFrameBaro(&crsfPayloadBuf);
+            crsfFinalize(&crsfPayloadBuf);
+            break;
+#endif
+        case CRSF_FRAME_BATTERY_SENSOR_INDEX:
+            crsfInitializeFrame(&crsfPayloadBuf);
+            crsfFrameBatterySensor(&crsfPayloadBuf);
+            crsfFinalize(&crsfPayloadBuf);
+            break;
+        case CRSF_FRAME_FLIGHT_MODE_INDEX:
+            crsfInitializeFrame(&crsfPayloadBuf);
+            crsfFrameFlightMode(&crsfPayloadBuf);
+            crsfFinalize(&crsfPayloadBuf);
+            break;
 #ifdef USE_GPS
-    if (currentSchedule & BIT(CRSF_FRAME_GPS_INDEX)) {
-        crsfInitializeFrame(dst);
-        crsfFrameGps(dst);
-        crsfFinalize(dst);
-    }
+        case CRSF_FRAME_GPS_INDEX:
+            crsfInitializeFrame(&crsfPayloadBuf);
+            crsfFrameGps(&crsfPayloadBuf);
+            crsfFinalize(&crsfPayloadBuf);
+            break;
 #endif
-
-#if defined(USE_CRSF_V3)
-    if (currentSchedule & BIT(CRSF_FRAME_HEARTBEAT_INDEX)) {
-        crsfInitializeFrame(dst);
-        crsfFrameHeartbeat(dst);
-        crsfFinalize(dst);
-    }
+        // case CRSF_FRAME_GYRO_INDEX:
+        //     crsfInitializeFrame(&crsfPayloadBuf);
+        //     crsfFrameGyro(&crsfPayloadBuf);
+        //     crsfFinalize(&crsfPayloadBuf);
+        //     break;
+        case CRSF_FRAME_HEARTBEAT_INDEX:
+            crsfInitializeFrame(&crsfPayloadBuf);
+            crsfFrameHeartbeat(&crsfPayloadBuf);
+            crsfFinalize(&crsfPayloadBuf);
+            break;
+        case CRSF_FRAME_IMU_INDEX:
+            crsfInitializeFrame(&crsfPayloadBuf);
+            crsfFrameIMU(&crsfPayloadBuf);
+            crsfFinalize(&crsfPayloadBuf);
+            break;
+#ifdef USE_MAG            
+        case CRSF_FRAME_MAGNET_INDEX:
+            crsfInitializeFrame(&crsfPayloadBuf);
+            crsfFrameMagnet(&crsfPayloadBuf);
+            crsfFinalize(&crsfPayloadBuf);
+            break;
 #endif
+        case CRSF_FRAME_QUATERNION_INDEX:
+            crsfInitializeFrame(&crsfPayloadBuf);
+            crsfFrameQuaternion(&crsfPayloadBuf);
+            crsfFinalize(&crsfPayloadBuf);
+            break;
+    }
 
-    crsfScheduleIndex = (crsfScheduleIndex + 1) % crsfScheduleCount;
+    crsfScheduleIndex++;
+    if (crsfScheduleIndex == crsfScheduleCount) {
+        crsfScheduleIndex = 0;
+    }
 }
 
 void crsfScheduleDeviceInfoResponse(void)
@@ -684,32 +856,41 @@ void initCrsfTelemetry(void)
     mspReplyPending = false;
 #endif
 
-    int index = 0;
-    if (sensors(SENSOR_ACC) && telemetryIsSensorEnabled(SENSOR_PITCH | SENSOR_ROLL | SENSOR_HEADING)) {
-        crsfSchedule[index++] = BIT(CRSF_FRAME_ATTITUDE_INDEX);
-    }
+    crsfScheduleCount = 0;
+    // if (sensors(SENSOR_ACC) && telemetryIsSensorEnabled(SENSOR_PITCH | SENSOR_ROLL | SENSOR_HEADING)) {
+    //     crsfSchedule[crsfScheduleCount++] = CRSF_FRAME_ACCELERATOR_INDEX;
+    //     crsfSchedule[crsfScheduleCount++] = CRSF_FRAME_ATTITUDE_INDEX;
+    //     crsfSchedule[crsfScheduleCount++] = CRSF_FRAME_QUATERNION_INDEX;
+    // }
     if ((isBatteryVoltageConfigured() && telemetryIsSensorEnabled(SENSOR_VOLTAGE))
         || (isAmperageConfigured() && telemetryIsSensorEnabled(SENSOR_CURRENT | SENSOR_FUEL))) {
-        crsfSchedule[index++] = BIT(CRSF_FRAME_BATTERY_SENSOR_INDEX);
+        crsfSchedule[crsfScheduleCount++] = CRSF_FRAME_BATTERY_SENSOR_INDEX;
     }
     if (telemetryIsSensorEnabled(SENSOR_MODE)) {
-        crsfSchedule[index++] = BIT(CRSF_FRAME_FLIGHT_MODE_INDEX);
+        crsfSchedule[crsfScheduleCount++] = CRSF_FRAME_FLIGHT_MODE_INDEX;
     }
 #ifdef USE_GPS
     if (featureIsEnabled(FEATURE_GPS)
        && telemetryIsSensorEnabled(SENSOR_ALTITUDE | SENSOR_LAT_LONG | SENSOR_GROUND_SPEED | SENSOR_HEADING)) {
-        crsfSchedule[index++] = BIT(CRSF_FRAME_GPS_INDEX);
+        crsfSchedule[crsfScheduleCount++] = CRSF_FRAME_GPS_INDEX;
     }
 #endif
+#ifdef USE_BARO
+    crsfSchedule[crsfScheduleCount++] = CRSF_FRAME_BARO_INDEX;
+#endif
+
+#ifdef USE_MAG
+    crsfSchedule[crsfScheduleCount++] = CRSF_FRAME_MAGNET_INDEX;
+#endif
+
+    crsfSchedule[crsfScheduleCount++] = CRSF_FRAME_IMU_INDEX;
 
 #if defined(USE_CRSF_V3)
-    while (index < (CRSF_CYCLETIME_US / CRSF_TELEMETRY_FRAME_INTERVAL_MAX_US) && index < CRSF_SCHEDULE_COUNT_MAX) {
+    while (crsfScheduleCount < (CRSF_CYCLETIME_US / CRSF_TELEMETRY_FRAME_INTERVAL_MAX_US) && crsfScheduleCount < CRSF_SCHEDULE_COUNT_MAX) {
         // schedule heartbeat to ensure that telemetry/heartbeat frames are sent at minimum 50Hz
-        crsfSchedule[index++] = BIT(CRSF_FRAME_HEARTBEAT_INDEX);
+        crsfSchedule[crsfScheduleCount++] = CRSF_FRAME_HEARTBEAT_INDEX;
     }
 #endif
-
-    crsfScheduleCount = (uint8_t)index;
 
 #if defined(USE_CRSF_CMS_TELEMETRY)
     crsfDisplayportRegister();
