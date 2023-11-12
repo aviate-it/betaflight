@@ -57,6 +57,13 @@ typedef enum {
     CRSF_FRAMETYPE_MSP_RESP = 0x7B,  // reply with 58 byte chunked binary
     CRSF_FRAMETYPE_MSP_WRITE = 0x7C,  // write with 8 byte chunked binary (OpenTX outbound telemetry buffer limit)
     CRSF_FRAMETYPE_DISPLAYPORT_CMD = 0x7D, // displayport control command
+    // Custom Frames
+    CRSF_FRAMETYPE_ACCELERATOR = 0xA0,
+    CRSF_FRAMETYPE_BARO = 0xA1,
+    CRSF_FRAMETYPE_GYRO = 0xA2,
+    CRSF_FRAMETYPE_MAGNET = 0xA3,
+    CRSF_FRAMETYPE_QUATERNION = 0xA4,
+    CRSF_FRAMETYPE_IMU = 0xA5,
 } crsfFrameType_e;
 
 enum {
@@ -89,6 +96,12 @@ enum {
     CRSF_FRAME_LINK_STATISTICS_TX_PAYLOAD_SIZE = 6,
     CRSF_FRAME_RC_CHANNELS_PAYLOAD_SIZE = 22, // 11 bits per channel * 16 channels = 22 bytes.
     CRSF_FRAME_ATTITUDE_PAYLOAD_SIZE = 6,
+    CRSF_FRAME_ACCELERATOR_PAYLOAD_SIZE = 12,
+    CRSF_FRAME_BARO_PAYLOAD_SIZE = 12,
+    CRSF_FRAME_GYRO_PAYLOAD_SIZE = 24,
+    CRSF_FRAME_MAGNET_PAYLOAD_SIZE = 12,
+    CRSF_FRAME_QUATERNION_PAYLOAD_SIZE = 16,
+    CRSF_FRAME_IMU_PAYLOAD_SIZE = 40,
 };
 
 enum {
